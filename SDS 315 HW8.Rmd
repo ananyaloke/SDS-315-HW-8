@@ -1,7 +1,7 @@
 ---
-title: "SDS 315 HW 7"
+title: "SDS 315 HW 8"
 author: "Ananya Loke - UT EID: asl3324"
-date: "2025-01-27"
+date: "2025-04-14"
 output: 
   pdf_document:
     latex_engine: xelatex
@@ -10,7 +10,7 @@ output:
 ---
 
 
-Click [here](https://github.com/ananyaloke/SDS-315-HW-7) for the Github link to the code!
+Click [here](https://github.com/ananyaloke/SDS-315-HW-8) for the Github link to the code!
 
 
 ```{r global_options, echo=FALSE}
@@ -68,11 +68,9 @@ The creatinine clearance rate changes at a rate of -0.62 with age. This was foun
 pred_40 = creatinine_intercept + creatinine_slope * 40
 pred_60 = creatinine_intercept + creatinine_slope * 60
 
-# Observed values
 obs_40 = 135
 obs_60 = 112
 
-# Residuals
 resid_40 = obs_40 - pred_40
 resid_60 = obs_60 - pred_60
 
@@ -85,55 +83,40 @@ In order to calculate the whose creatinine clearance rate is healthier (higher) 
 
 
 ```{r}
-get_growth_rate = function(data) {
-  model = lm(log(deaths) ~ days_since_first_death, data = data)
+
+italy = filter(covid, country == "Italy")
+spain = filter(covid, country == "Spain")
+
+italy_model = lm(log(deaths) ~ days_since_first_death, data = italy)
+spain_model = lm(log(deaths) ~ days_since_first_death, data = spain)
+
+italy_growth_rate = coef(italy_model)[2]
+spain_growth_rate = coef(spain_model)[2]
+
+italy_doubling_time = log(2) / italy_growth_rate
+spain_doubling_time = log(2) / spain_growth_rate
+
+
+bootstrap_rate = function(data, indices) {
+  sample = data[indices, ]
+  model = lm(log(deaths) ~ days_since_first_death, data = sample)
   return(coef(model)[2])
 }
 
-calc_doubling_time = function(r) {
-  return(log(2) / r)
-}
+set.seed(123)
+italy_boot = boot(italy, bootstrap_rate, R = 1000)
+italy_ci = boot.ci(italy_boot, type = "perc")$percent[4:5]
+italy_doubling_ci = log(2) / rev(italy_ci)
 
-manual_bootstrap = function(data, n_boot = 1000) {
-  rates = replicate(n_boot, {
-    sample_indices = sample(1:nrow(data), replace = TRUE)
-    sample_data = data[sample_indices, ]
-    get_growth_rate(sample_data)
-  })
-  ci = quantile(rates, probs = c(0.025, 0.975))
-  return(list(rates = rates, ci = ci))
-}
+set.seed(123)
+spain_boot = boot(spain, bootstrap_rate, R = 1000)
+spain_ci = boot.ci(spain_boot, type = "perc")$percent[4:5]
+spain_doubling_ci = log(2) / rev(spain_ci)
 
-italy = covid %>% filter(country == "Italy")
-spain = covid %>% filter(country == "Spain")
-
-r_italy = get_growth_rate(italy)
-r_spain = get_growth_rate(spain)
-
-dt_italy = calc_doubling_time(r_italy)
-dt_spain = calc_doubling_time(r_spain)
-
-boot_italy = manual_bootstrap(italy)
-boot_spain = manual_bootstrap(spain)
-
-r_italy_ci = boot_italy$ci
-r_spain_ci = boot_spain$ci
-
-dt_italy_ci = calc_doubling_time(rev(r_italy_ci))
-dt_spain_ci = calc_doubling_time(rev(r_spain_ci))
-
-r_italy = round(r_italy, 3)
-r_spain = round(r_spain, 3)
-dt_italy = round(dt_italy, 1)
-dt_spain = round(dt_spain, 1)
-r_italy_ci = round(r_italy_ci, 3)
-r_spain_ci = round(r_spain_ci, 3)
-dt_italy_ci = round(dt_italy_ci, 1)
-dt_spain_ci = round(dt_spain_ci, 1)
 
 ```
 
-After fitting exponential models to daily COVID-19 deaths in Italy and Spain using days since the first death as the time variable, we found that Italy had a growth rate of 0.183 (95% CI: 0.159–0.206) and a doubling time of 3.8 days (95% CI: 3.4–4.4). Spain’s growth rate was higher at 0.276 (95% CI: 0.236–0.315), with a doubling time of 2.5 days (95% CI: 2.2–2.9). 
+After fitting exponential models to daily COVID-19 deaths in Italy and Spain using days since the first death as the time variable, we found that Italy had a growth rate of 0.183 (95% CI: 0.159 – 0.208) and a doubling time of 3.8 days (95% CI: 3.3 – 4.4). Spain’s growth rate was higher at 0.276 (95% CI: 0.236 – 0.315), with a doubling time of 2.5 days (95% CI: 2.2 – 3.0). 
 
 The plot below shows how daily deaths rose over time in each country.
 
@@ -143,15 +126,16 @@ The plot below shows how daily deaths rose over time in each country.
 ggplot(covid, aes(x = days_since_first_death, y = deaths, color = country)) +
   geom_line(size = 1) +
   scale_color_manual(values = c("Italy" = "darkmagenta", "Spain" = "deeppink3")) + 
-  labs(
-    title = "Daily Reported COVID-19 Deaths",
-    x = "Days Since First Death",
-    y = "Daily Deaths"
-  ) +
+  labs(title = "Daily COVID-19 Deaths by Country",
+       x = "Days Since First Death",
+       y = "Daily Reported Deaths") +
   theme_minimal()
 
 
 ```
+
+
+
 
 
 
@@ -190,6 +174,6 @@ $$
 Q = K \cdot P^{\beta}
 $$
 
-Estimating log(sales) on log(price) by regression, we obtained an estimate of elasticity β = -1.62. After bootstraping with 10,000 replicates, we got a 95% confidence interval estimate of [ -1.77, -1.46 ], which informs us that milk demand is elastic in this sample—i.e., quantity demanded is highly sensitive to price changes.
+Estimating log(sales) on log(price) by regression, we obtained an estimate of elasticity of about -1.62. After bootstraping with 10,000 replicates, we got a 95% confidence interval estimate of [ -1.77, -1.46 ], which informs us that milk demand is elastic in this sample, meaning the quantity demanded is highly sensitive to price changes.
 
 
