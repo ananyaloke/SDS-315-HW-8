@@ -1,0 +1,195 @@
+---
+title: "SDS 315 HW 7"
+author: "Ananya Loke - UT EID: asl3324"
+date: "2025-01-27"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    includes:
+      toc: true
+---
+
+
+Click [here](https://github.com/ananyaloke/SDS-315-HW-7) for the Github link to the code!
+
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=6, fig.width=8, warning=FALSE, message = FALSE, tidy=TRUE, echo=FALSE, tidy.opts=list(width.cutoff=60))
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+#loading libraries
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+library(rvest)
+library(RColorBrewer)
+library(mosaic)
+library(boot)
+
+
+
+#reading in datasets
+creatinine = read_csv("creatinine.csv")
+covid = read_csv("covid.csv")
+milk = read_csv("milk.csv")
+
+
+
+```
+
+
+# **Problem 1: Regression Warm Up**
+
+### Part A: Expected Creatinine Clearance Rate for a 55-Year-Old
+
+```{r}
+creatinine_model = lm(creatclear ~ age, data = creatinine)
+
+creatinine_intercept = coef(creatinine_model)[1]
+creatinine_slope = coef(creatinine_model)[2]
+
+creatinine_age = 55
+predicted_clearance = creatinine_intercept + creatinine_slope * creatinine_age
+
+```
+
+The creatinine clearance rate should we expect for a 55-year-old is about 113.7 ml. This value was found after creating a linear regression model based on the data. This model gave us an equation with a slope of ~-0.62 and an intercept of ~148. After plugging in 55 into the equation, we get an expected clearlence rate of ~113.7ml.
+
+
+### Part B: Creatinine Clearance Rate Change with Age
+
+The creatinine clearance rate changes at a rate of -0.62 with age. This was found in the same way as in part A, where the linear regression model based on the data provides a slope of -0.62. This number represents the change in clearence rates as age increases. 
+
+
+### Part C: Healthier Creatinine Clearance Rate
+```{r}
+pred_40 = creatinine_intercept + creatinine_slope * 40
+pred_60 = creatinine_intercept + creatinine_slope * 60
+
+# Observed values
+obs_40 = 135
+obs_60 = 112
+
+# Residuals
+resid_40 = obs_40 - pred_40
+resid_60 = obs_60 - pred_60
+
+```
+
+In order to calculate the whose creatinine clearance rate is healthier (higher) for their age, we need to compare the residuals of a 40-year-old with a rate of 135 and a 60-year-old with a rate of 112. This residual, calculated by subtracting the expected values from the observed values, was ~12 and ~1.38 respectively. Since the residual of the 40-year-old was greater than the 60-year-old, we can say that the 40-year-old is relatively healthier for their age.
+
+
+# **Problem 2: Modeling Disease Growth**
+
+
+```{r}
+get_growth_rate = function(data) {
+  model = lm(log(deaths) ~ days_since_first_death, data = data)
+  return(coef(model)[2])
+}
+
+calc_doubling_time = function(r) {
+  return(log(2) / r)
+}
+
+manual_bootstrap = function(data, n_boot = 1000) {
+  rates = replicate(n_boot, {
+    sample_indices = sample(1:nrow(data), replace = TRUE)
+    sample_data = data[sample_indices, ]
+    get_growth_rate(sample_data)
+  })
+  ci = quantile(rates, probs = c(0.025, 0.975))
+  return(list(rates = rates, ci = ci))
+}
+
+italy = covid %>% filter(country == "Italy")
+spain = covid %>% filter(country == "Spain")
+
+r_italy = get_growth_rate(italy)
+r_spain = get_growth_rate(spain)
+
+dt_italy = calc_doubling_time(r_italy)
+dt_spain = calc_doubling_time(r_spain)
+
+boot_italy = manual_bootstrap(italy)
+boot_spain = manual_bootstrap(spain)
+
+r_italy_ci = boot_italy$ci
+r_spain_ci = boot_spain$ci
+
+dt_italy_ci = calc_doubling_time(rev(r_italy_ci))
+dt_spain_ci = calc_doubling_time(rev(r_spain_ci))
+
+r_italy = round(r_italy, 3)
+r_spain = round(r_spain, 3)
+dt_italy = round(dt_italy, 1)
+dt_spain = round(dt_spain, 1)
+r_italy_ci = round(r_italy_ci, 3)
+r_spain_ci = round(r_spain_ci, 3)
+dt_italy_ci = round(dt_italy_ci, 1)
+dt_spain_ci = round(dt_spain_ci, 1)
+
+```
+
+After fitting exponential models to daily COVID-19 deaths in Italy and Spain using days since the first death as the time variable, we found that Italy had a growth rate of 0.183 (95% CI: 0.159–0.206) and a doubling time of 3.8 days (95% CI: 3.4–4.4). Spain’s growth rate was higher at 0.276 (95% CI: 0.236–0.315), with a doubling time of 2.5 days (95% CI: 2.2–2.9). 
+
+The plot below shows how daily deaths rose over time in each country.
+
+
+```{r}
+
+ggplot(covid, aes(x = days_since_first_death, y = deaths, color = country)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Italy" = "darkmagenta", "Spain" = "deeppink3")) + 
+  labs(
+    title = "Daily Reported COVID-19 Deaths",
+    x = "Days Since First Death",
+    y = "Daily Deaths"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+
+
+
+# Problem 3: Price Elasticity of Demand
+
+
+```{r}
+
+milk = milk %>%
+  mutate(
+    log_price = log(price),
+    log_sales = log(sales)
+  )
+
+milk_model = lm(log_sales ~ log_price, data = milk)
+beta_hat = coef(milk_model)[2]  # This is the estimated price elasticity
+
+boot_elasticity = function(data, indices) {
+  sample_data = data[indices, ]
+  model = lm(log_sales ~ log_price, data = sample_data)
+  return(coef(model)[2])
+}
+
+boot_result = boot(milk, boot_elasticity, R = 10000)
+
+ci_beta = boot.ci(boot_result, type = "perc")$percent[4:5]
+
+```
+
+
+We estimated the price elasticity of demand for milk using the power-law model:
+
+$$
+Q = K \cdot P^{\beta}
+$$
+
+Estimating log(sales) on log(price) by regression, we obtained an estimate of elasticity β = -1.62. After bootstraping with 10,000 replicates, we got a 95% confidence interval estimate of [ -1.77, -1.46 ], which informs us that milk demand is elastic in this sample—i.e., quantity demanded is highly sensitive to price changes.
+
+
